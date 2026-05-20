@@ -2142,6 +2142,8 @@ begin
   ApplyFilter;
   UpdateGridTypes;
 end;
+
+
 procedure TFormTypeSelect.actTypeFindInternetExecute(Sender: TObject);
 var
   Resp: IHTTPResponse;
