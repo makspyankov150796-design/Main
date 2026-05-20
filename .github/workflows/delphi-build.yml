@@ -1,0 +1,25 @@
+name: Delphi Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Show project files
+        shell: cmd
+        run: |
+          cd
+          dir
+          dir *.dproj /s
+
+      - name: Build Delphi project
+        shell: cmd
+        run: |
+          call "C:\Program Files (x86)\Embarcadero\Studio\23.0\bin\rsvars.bat"
+          msbuild ProjectFornTest.dproj /t:Build /p:Config=Debug /p:Platform=Win32
