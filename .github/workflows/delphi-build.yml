@@ -2,6 +2,9 @@ name: Delphi Build
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
   build:
@@ -11,10 +14,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Show project files
+      - name: Show workspace
         shell: cmd
         run: |
           cd
+          echo GITHUB_WORKSPACE=%GITHUB_WORKSPACE%
           dir
           dir *.dproj /s
 
@@ -22,4 +26,4 @@ jobs:
         shell: cmd
         run: |
           call "C:\Program Files (x86)\Embarcadero\Studio\23.0\bin\rsvars.bat"
-          msbuild ProjectFornTest.dproj /t:Build /p:Config=Debug /p:Platform=Win32
+          msbuild "%GITHUB_WORKSPACE%\ProjectFornTest.dproj" /t:Build /p:Config=Debug /p:Platform=Win32
