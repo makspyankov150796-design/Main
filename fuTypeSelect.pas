@@ -2079,15 +2079,16 @@ begin
     Result := sfName; // безопасный дефолт
 end;
 
-procedure  TFormTypeSelect.ComboBoxRepositoryChange(Sender: TObject);
+procedure TFormTypeSelect.ComboBoxRepositoryChange(Sender: TObject);
 var
   Idx: Integer;
   RepoName: string;
   Repo: TTypeRepository;
   Res: TModalResult;
-
-
 begin
+  if AppServices.DataManager = nil then
+    Exit;
+
   Repo := AppServices.DataManager.ActiveTypeRepo;
 
   if (Repo <> nil) and (Repo.State = osModified) then
@@ -2104,15 +2105,11 @@ begin
         begin
           try
             if not Repo.Save then
-            begin
-              //Action := TCloseAction.caNone;
               Exit;
-            end;
           except
             on E: Exception do
             begin
               ShowMessage('Ошибка сохранения: ' + E.Message);
-             // Action := TCloseAction.caNone;
               Exit;
             end;
           end;
@@ -2120,20 +2117,13 @@ begin
 
       mrNo:
         begin
-          // закрываем без сохранения
+          // Продолжаем смену репозитория без сохранения.
         end;
 
       mrCancel:
-        begin
-          //Action := TCloseAction.caNone;
-          Exit;
-        end;
+        Exit;
     end;
   end;
-
-
-  if (AppServices.DataManager = nil) then
-    Exit;
 
   Idx := ComboBoxRepository.ItemIndex;
   if Idx < 0 then
@@ -2141,26 +2131,17 @@ begin
 
   RepoName := ComboBoxRepository.Items[Idx];
 
-  {----------------------------------}
-  { Смена активного репозитория через менеджер }
-  {----------------------------------}
   AppServices.DataManager.SetActiveTypeRepository(RepoName);
 
-  {----------------------------------}
-  { Пересборка UI }
-  {----------------------------------}
-  LoadData;      // гарантирует валидный FDeviceTypes
+  LoadData;
 
-
-
-      if not UpdateConnection then
-        Exit;
+  if not UpdateConnection then
+    Exit;
 
   BuildTree;
   ApplyFilter;
-    UpdateGridTypes;
+  UpdateGridTypes;
 end;
-
 procedure TFormTypeSelect.actTypeFindInternetExecute(Sender: TObject);
 var
   Resp: IHTTPResponse;
