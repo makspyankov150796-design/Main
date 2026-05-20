@@ -1,0 +1,619 @@
+﻿unit uTable_Data;
+
+interface
+
+uses
+  Data.DB,
+  FireDAC.Comp.Client,
+  FireDAC.Comp.DataSet,
+  FireDAC.DApt,
+  FireDAC.DApt.Intf,
+  FireDAC.DatS,
+  FireDAC.FMXUI.Wait,
+  FireDAC.Phys,
+  FireDAC.Phys.Intf,
+  FireDAC.Phys.SQLite,
+  FireDAC.Phys.SQLiteDef,
+  FireDAC.Phys.SQLiteWrapper.Stat,
+  FireDAC.Stan.Async,
+  FireDAC.Stan.Def,
+  FireDAC.Stan.Error,
+  FireDAC.Stan.ExprFuncs,
+  FireDAC.Stan.Intf,
+  FireDAC.Stan.Option,
+  FireDAC.Stan.Param,
+  FireDAC.Stan.Pool,
+  FireDAC.UI.Intf,
+  System.Classes,
+  System.Generics.Collections,
+  System.StrUtils,
+  System.SysUtils;
+
+type
+
+  TTableColumn = record
+    Name: string;
+    SqlType: string;
+  end;
+
+  TTableColumns = TArray<TTableColumn>;
+
+  TTableDM = class(TDataModule)
+    TypesConnection: TFDConnection;
+    FDPhysSQLiteDriverLink1: TFDPhysSQLiteDriverLink;
+    Types: TFDTable;
+    Diameters: TFDTable;
+    TypePoints: TFDTable;
+    DevicesConnection: TFDConnection;
+    Devices: TFDTable;
+    DevicePoints: TFDTable;
+    SpillagePoints: TFDTable;
+    Categories: TFDTable;
+
+
+  private
+    FDatabaseFileName :String;
+
+    procedure CreateEmptyDatabase;
+    procedure CreateTablesIfNotExist;
+    procedure EnsureColumn(const ATable, AColumn, AType: string);
+    procedure EnsureIndex(const AIndexName, ATable, AColumn: string);
+    function  ColumnExists(const ATable, AColumn: string): Boolean;
+    function  TableExists(const ATable: string): Boolean;
+    procedure CreateTable(const ATable: string; const Columns: TTableColumns);
+    procedure ApplySQLitePragmas(AConnection: TFDConnection);
+
+
+  public
+     // Новая архитекрура
+    constructor Create(const AFileName: string);
+
+    procedure OpenDB;
+    procedure CloseDB;
+    function  CreateQuery: TFDQuery;
+    procedure StartTransaction;
+    procedure Commit;
+    procedure Rollback;
+    procedure ExecSQL(const ASQL: string);
+    function IsConnected: Boolean;
+    procedure EnsureTable(const ATable: string; const Columns: TTableColumns);
+    function  GetTableColumns(const ATable: string): TStringList;
+    function GetDatabaseFileName: string;
+    procedure SetDatabaseFileName(const Value: string);
+
+    property DatabaseFileName: string read GetDatabaseFileName write SetDatabaseFileName;
+    destructor Destroy; override;
+
+  end;
+
+
+var
+  TableDM: TTableDM;
+  procedure OpenDatabase(ADM: TTableDM);
+  procedure CreateTablesIfNotExist(AConnection: TFDConnection);
+
+
+implementation
+
+{%CLASSGROUP 'FMX.Controls.TControl'}
+
+{$R *.dfm}
+
+uses
+  System.IOUtils;
+
+constructor TTableDM.Create(const AFileName: string);
+begin
+  inherited Create(nil);  // 🔥 КРИТИЧЕСКИ ВАЖНО
+
+  if AFileName = '' then
+    raise Exception.Create('TDM.Create: empty database file name');
+
+  FDatabaseFileName := AFileName;
+
+end;
+
+
+procedure TTableDM.CreateTablesIfNotExist;
+begin
+  {--------------------------------------------------}
+  { SQLite: включаем внешние ключи }
+  {--------------------------------------------------}
+  ExecSQL('PRAGMA foreign_keys = ON');
+
+  {--------------------------------------------------}
+  { Базовая таблица DeviceType }
+  {--------------------------------------------------}
+  ExecSQL(
+    'CREATE TABLE IF NOT EXISTS DeviceType (' +
+    'ID INTEGER PRIMARY KEY AUTOINCREMENT,' +
+    'Name TEXT NOT NULL,' +
+    'Modification TEXT,' +
+    'Manufacturer TEXT,' +
+    'ReestrNumber TEXT,' +
+    'Category INTEGER,' +
+    'CategoryName TEXT,' +
+    'AccuracyClass TEXT,' +
+    'RegDate DATE,' +
+    'ValidityDate DATE,' +
+    'IVI INTEGER,' +
+    'RangeDynamic REAL' +
+    ')'
+  );
+
+  {--------------------------------------------------}
+  { МИГРАЦИИ — ВСЕ ПОЛЯ МОДЕЛИ }
+  {--------------------------------------------------}
+  EnsureColumn('DeviceType', 'UUID', 'TEXT');
+
+  EnsureColumn('DeviceType', 'VerificationMethod', 'TEXT');
+  EnsureColumn('DeviceType', 'ProcedureName', 'TEXT');
+
+  EnsureColumn('DeviceType', 'ProcedureCmd1', 'TEXT');
+  EnsureColumn('DeviceType', 'ProcedureCmd2', 'TEXT');
+  EnsureColumn('DeviceType', 'ProcedureCmd3', 'TEXT');
+  EnsureColumn('DeviceType', 'ProcedureCmd4', 'TEXT');
+  EnsureColumn('DeviceType', 'ProcedureCmd5', 'TEXT');
+
+  EnsureColumn('DeviceType', 'Description', 'TEXT');
+  EnsureColumn('DeviceType', 'Documentation', 'TEXT');
+  EnsureColumn('DeviceType', 'ReportingForm', 'TEXT');
+  EnsureColumn('DeviceType', 'SerialNumTemplate', 'TEXT');
+
+  EnsureColumn('DeviceType', 'MeasuredDimension', 'INTEGER');
+  EnsureColumn('DeviceType', 'Units', 'INTEGER');
+  EnsureColumn('DeviceType', 'OutputType', 'INTEGER');
+  EnsureColumn('DeviceType', 'DimensionCoef', 'INTEGER');
+
+  EnsureColumn('DeviceType', 'OutputSet', 'INTEGER');
+  EnsureColumn('DeviceType', 'Freq', 'REAL');
+  EnsureColumn('DeviceType', 'Coef', 'REAL');
+  EnsureColumn('DeviceType', 'FreqFlowRate', 'REAL');
+
+  EnsureColumn('DeviceType', 'VoltageRange', 'INTEGER');
+  EnsureColumn('DeviceType', 'VoltageQminRate', 'REAL');
+  EnsureColumn('DeviceType', 'VoltageQmaxRate', 'REAL');
+
+  EnsureColumn('DeviceType', 'CurrentRange', 'INTEGER');
+  EnsureColumn('DeviceType', 'CurrentQminRate', 'REAL');
+  EnsureColumn('DeviceType', 'CurrentQmaxRate', 'REAL');
+  EnsureColumn('DeviceType', 'IntegrationTime', 'INTEGER');
+
+  EnsureColumn('DeviceType', 'ProtocolName', 'TEXT');
+  EnsureColumn('DeviceType', 'BaudRate', 'INTEGER');
+  EnsureColumn('DeviceType', 'Parity', 'INTEGER');
+  EnsureColumn('DeviceType', 'DeviceAddress', 'INTEGER');
+
+  EnsureColumn('DeviceType', 'InputType', 'INTEGER');
+  EnsureColumn('DeviceType', 'SpillageType', 'INTEGER');
+  EnsureColumn('DeviceType', 'SpillageStop', 'INTEGER');
+
+  EnsureColumn('DeviceType', 'Repeats', 'INTEGER');
+  EnsureColumn('DeviceType', 'RepeatsProtocol', 'INTEGER');
+
+  EnsureColumn('DeviceType', 'Error', 'REAL');
+
+  {--------------------------------------------------}
+  { Миграция категорий (если таблица уже существует) }
+  {--------------------------------------------------}
+  if TableExists('DeviceCategory') then
+    EnsureColumn('DeviceCategory', 'StdCategory', 'INTEGER');
+end;
+
+procedure TTableDM.CreateEmptyDatabase;
+begin
+  TFileStream.Create(FDatabaseFileName, fmCreate).Free;
+
+  TypesConnection.Connected := True;
+  CreateTablesIfNotExist;
+end;
+
+
+destructor TTableDM.Destroy;
+begin
+  if Assigned(TypesConnection) then
+    TypesConnection.Connected := False;
+
+  if Assigned(DevicesConnection) then
+    DevicesConnection.Connected := False;
+
+  inherited;
+end;
+
+procedure TTableDM.ApplySQLitePragmas(AConnection: TFDConnection);
+var
+  Q: TFDQuery;
+begin
+  if (AConnection = nil) or (not AConnection.Connected) then
+    Exit;
+
+  Q := TFDQuery.Create(nil);
+  try
+    Q.Connection := AConnection;
+    Q.SQL.Text := 'PRAGMA foreign_keys = ON';
+    Q.ExecSQL;
+    Q.SQL.Text := 'PRAGMA busy_timeout = 5000';
+    Q.ExecSQL;
+    Q.SQL.Text := 'PRAGMA journal_mode = WAL';
+    Q.ExecSQL;
+    Q.SQL.Text := 'PRAGMA synchronous = NORMAL';
+    Q.ExecSQL;
+  finally
+    Q.Free;
+  end;
+end;
+
+procedure TTableDM.OpenDB;
+begin
+
+
+  // 1. Если файла нет — создаём
+
+  if not FileExists(FDatabaseFileName) then
+  begin
+    ForceDirectories(ExtractFilePath(FDatabaseFileName));
+    TFile.Create(FDatabaseFileName).Free;
+  end;
+
+  { Важно: в DFM оба Connection могут быть уже Connected=True.
+    Чтобы гарантированно переключиться на нужный файл БД,
+    сначала отключаем их, затем задаём параметры и подключаем заново. }
+  TypesConnection.Connected := False;
+  DevicesConnection.Connected := False;
+
+  TypesConnection.DriverName := 'SQLite';
+  TypesConnection.Params.Database := FDatabaseFileName;
+  TypesConnection.Params.Values['BusyTimeout'] := '5000';
+  TypesConnection.LoginPrompt := False;
+  TypesConnection.Connected := True;
+
+  DevicesConnection.DriverName := 'SQLite';
+  DevicesConnection.Params.Database := FDatabaseFileName;
+  DevicesConnection.Params.Values['BusyTimeout'] := '5000';
+  DevicesConnection.LoginPrompt := False;
+  DevicesConnection.Connected := True;
+
+  ApplySQLitePragmas(TypesConnection);
+  ApplySQLitePragmas(DevicesConnection);
+end;
+
+procedure TTableDM.CloseDB;
+begin
+  TypesConnection.Connected := False;
+  DevicesConnection.Connected := False;
+end;
+
+function TTableDM.CreateQuery: TFDQuery;
+begin
+  Result := TFDQuery.Create(nil);
+  Result.Connection := TypesConnection;
+end;
+
+procedure TTableDM.StartTransaction;
+begin
+  TypesConnection.StartTransaction;
+end;
+
+procedure TTableDM.Commit;
+begin
+  TypesConnection.Commit;
+end;
+
+procedure TTableDM.Rollback;
+begin
+  TypesConnection.Rollback;
+end;
+
+procedure TTableDM.ExecSQL(const ASQL: string);
+var
+  Q: TFDQuery;
+begin
+  Q := CreateQuery;
+  try
+    Q.SQL.Text := ASQL;
+    Q.ExecSQL;
+  finally
+    Q.Free;
+  end;
+end;
+
+function TTableDM.IsConnected: Boolean;
+begin
+  Result := TypesConnection.Connected;
+end;
+
+procedure TTableDM.EnsureColumn(
+  const ATable, AColumn, AType: string
+);
+begin
+  if ColumnExists(ATable, AColumn) then
+    Exit;
+
+  ExecSQL(
+    Format(
+      'ALTER TABLE %s ADD COLUMN %s %s',
+      [ATable, AColumn, AType]
+    )
+  );
+end;
+procedure TTableDM.EnsureIndex(
+  const AIndexName, ATable, AColumn: string
+);
+begin
+  ExecSQL(
+    Format(
+      'CREATE INDEX IF NOT EXISTS %s ON %s(%s)',
+      [AIndexName, ATable, AColumn]
+    )
+  );
+end;
+
+procedure TTableDM.EnsureTable(
+  const ATable: string;
+  const Columns: TTableColumns
+);
+var
+  Existing: TStringList;
+  I: Integer;
+begin
+  if not TableExists(ATable) then
+    CreateTable(ATable, Columns);
+
+  Existing := GetTableColumns(ATable);
+  try
+    for I := Low(Columns) to High(Columns) do
+      if Existing.IndexOf(Columns[I].Name) < 0 then
+        ExecSQL(
+          Format(
+            'ALTER TABLE %s ADD COLUMN %s %s',
+            [ATable, Columns[I].Name, Columns[I].SqlType]
+          )
+        );
+  finally
+    Existing.Free;
+  end;
+end;
+
+function TTableDM.ColumnExists(
+  const ATable, AColumn: string
+): Boolean;
+var
+  Q: TFDQuery;
+begin
+  Result := False;
+
+  Q := CreateQuery;
+  try
+    Q.SQL.Text := 'PRAGMA table_info(' + ATable + ')';
+    Q.Open;
+
+    while not Q.Eof do
+    begin
+      if SameText(Q.FieldByName('name').AsString, AColumn) then
+        Exit(True);
+      Q.Next;
+    end;
+  finally
+    Q.Free;
+  end;
+end;
+
+function TTableDM.GetTableColumns(const ATable: string): TStringList;
+var
+  Q: TFDQuery;
+begin
+  Result := TStringList.Create;
+  Result.CaseSensitive := False;
+
+  Q := CreateQuery;
+  try
+    Q.SQL.Text := 'PRAGMA table_info(' + ATable + ')';
+    Q.Open;
+
+    while not Q.Eof do
+    begin
+      Result.Add(Q.FieldByName('name').AsString);
+      Q.Next;
+    end;
+  finally
+    Q.Free;
+  end;
+end;
+
+function TTableDM.TableExists(const ATable: string): Boolean;
+var
+  Q: TFDQuery;
+begin
+  Result := False;
+
+  Q := CreateQuery;
+  try
+    Q.SQL.Text :=
+      'SELECT name FROM sqlite_master ' +
+      'WHERE type = ''table'' AND name = :name';
+    Q.ParamByName('name').AsString := ATable;
+    Q.Open;
+
+    Result := not Q.Eof;
+  finally
+    Q.Free;
+  end;
+end;
+
+procedure TTableDM.CreateTable(
+  const ATable: string;
+  const Columns: TTableColumns
+);
+var
+  I: Integer;
+  SQL: TStringList;
+begin
+  SQL := TStringList.Create;
+  try
+    SQL.Add('CREATE TABLE ' + ATable + ' (');
+
+    for I := Low(Columns) to High(Columns) do
+    begin
+      SQL.Add(
+        Format(
+          '  %s %s%s',
+          [
+            Columns[I].Name,
+            Columns[I].SqlType,
+            IfThen(I < High(Columns), ',', '')
+          ]
+        )
+      );
+    end;
+
+    SQL.Add(')');
+
+    ExecSQL(SQL.Text);
+  finally
+    SQL.Free;
+  end;
+end;
+
+procedure TTableDM.SetDatabaseFileName(const Value: string);
+begin
+ if FDatabaseFileName <> Value then
+  begin
+    FDatabaseFileName := Value;
+    if TypesConnection.Connected then
+      TypesConnection.Connected := False;
+    TypesConnection.Params.Database := Value;
+  end;
+end;
+
+
+{ }
+
+function TTableDM.GetDatabaseFileName: string;
+begin
+  result:=FDatabaseFileName;
+end;
+
+procedure OpenDatabase(ADM: TTableDM);
+var
+  Q: TFDQuery;
+procedure InitDefaultData(AConnection: TFDConnection);
+var
+  Q: TFDQuery;
+begin
+  Q := TFDQuery.Create(nil);
+  try
+    Q.Connection := AConnection;
+
+    AConnection.StartTransaction;
+    try
+      // здесь  INSERT, либо пусто
+      AConnection.Commit;
+    except
+      AConnection.Rollback;
+      raise;
+    end;
+  finally
+    Q.Free;
+  end;
+end;
+
+
+begin
+
+
+  // 2. Открываем соединение
+  ADM.OpenDB;
+
+  // 3. Создаём таблицы, если их нет
+  CreateTablesIfNotExist(ADM.TypesConnection);
+
+  // 4. Проверяем, есть ли данные
+  Q := ADM.CreateQuery;
+  try
+    Q.SQL.Text := 'select count(*) from DeviceType';
+    Q.Open;
+
+    if Q.Fields[0].AsInteger = 0 then
+      InitDefaultData(ADM.TypesConnection);
+  finally
+    Q.Free;
+  end;
+end;
+
+procedure CreateTablesIfNotExist(AConnection: TFDConnection);
+var
+  Q: TFDQuery;
+begin
+  Q := TFDQuery.Create(nil);
+  try
+    Q.Connection := AConnection;
+
+    {==================================================}
+    { Таблица типов приборов }
+    {==================================================}
+    Q.SQL.Text :=
+      'CREATE TABLE IF NOT EXISTS DeviceType (' +
+      'ID INTEGER PRIMARY KEY AUTOINCREMENT,' +
+      'Name TEXT NOT NULL,' +
+      'Category INTEGER,' +
+      'AccuracyClass TEXT' +
+      ')';
+    Q.ExecSQL;
+
+    {==================================================}
+    { Таблица диаметров типа }
+    {==================================================}
+    Q.SQL.Text :=
+      'CREATE TABLE IF NOT EXISTS DeviceDiameter (' +
+      'ID INTEGER PRIMARY KEY AUTOINCREMENT,' +
+      'DeviceTypeID INTEGER,' +
+      'DeviceTypeUUID TEXT NOT NULL,' +
+      'Name TEXT,' +
+      'DN TEXT,' +
+      'Description TEXT,' +
+      'Qmax REAL,' +
+      'Qmin REAL,' +
+      'Kp REAL,' +
+      'QFmax REAL,' +
+      'Vmax REAL,' +
+      'Vmin REAL' +
+      ')';
+    Q.ExecSQL;
+
+    {==================================================}
+    { Таблица точек типа }
+    {==================================================}
+    Q.SQL.Text :=
+      'CREATE TABLE IF NOT EXISTS DeviceTypePoint (' +
+      'ID INTEGER PRIMARY KEY AUTOINCREMENT,' +
+      'DeviceTypeID INTEGER,' +
+      'DeviceTypeUUID TEXT NOT NULL,' +
+      'Name TEXT,' +
+      'Description TEXT,' +
+      'FlowRate REAL,' +
+      'FlowAccuracy TEXT,' +
+      'Pressure REAL,' +
+      'Temp REAL,' +
+      'TempAccuracy TEXT,' +
+      'LimitImp INTEGER,' +
+      'LimitVolume REAL,' +
+      'LimitTime REAL,' +
+      'Error REAL,' +
+      'Pause INTEGER,' +
+      'RepeatsProtocol INTEGER,' +
+      'Repeats INTEGER' +
+      ')';
+    Q.ExecSQL;
+
+  finally
+    Q.Free;
+  end;
+end;
+
+
+
+
+
+
+
+end.
