@@ -2085,11 +2085,6 @@ var
   RepoName: string;
   Repo: TTypeRepository;
   Res: TModalResult;
-begin
-  {----------------------------------}
-  { Проверки }
-  {----------------------------------}
-
 
 
 begin
@@ -2135,7 +2130,7 @@ begin
         end;
     end;
   end;
-end;
+
 
   if (AppServices.DataManager = nil) then
     Exit;
